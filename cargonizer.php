@@ -41,7 +41,7 @@ class cargonizer {
 	private $pkg_number;
 	private $urls = array();
 	private $cost_estimate = 0;
-	private $error = array();
+	private $errors = array();
 	private $error_flag = 0;
 	private $sxml;
 	
@@ -106,15 +106,17 @@ class cargonizer {
 		$this->urls = array();
 		$this->cost_estimate = 0;
 		$this->data = $data;
-				
-		$xw = &new CRG_Xmlwriter();
-		$xw = $this->parseArray($data,$xw);
-		$xml = $xw->getXml();
+
+		// echo "<pre>".print_r($data,1)."</pre>";
+
+		$xml = $this->toXml(); 
+		echo "<pre> ".print_r($xml,1)."</pre>";
+
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url);
 		curl_setopt($this->curl, CURLOPT_POST, 1);
 		curl_setopt($this->curl, CURLOPT_CUSTOMREQUEST, "POST");
 		
-		if($debug == 1) echo "XML<br>\n".print_r($xml,1)."<br>\n";
+		if($debug == 0) echo "XML<br>\n".print_r($xml,1)."<br>\n";
 		
 		curl_setopt($this->curl, CURLOPT_POSTFIELDS, $xml);
 		$headers = array(
@@ -129,7 +131,7 @@ class cargonizer {
 		if($debug == 0) $response = $this->runRequest($debug);
 		
 		if($debug == 0) $this->parseResponse($response,$debug);
-		
+		//echo $response;
 		return $response;
 	}
 	/**
@@ -160,10 +162,33 @@ class cargonizer {
 	 * General array to xml parser
 	 */
 	private function parseArray($data,&$xw) {
+
+		// echo "<pre>".print_r($data,1)."</pre>";
+		echo count($data);
+		echo "----";
+
 		foreach($data as $k=>$v) {
+
+			if(!is_array($v)) {
+				continue;
+			}
+
+			if(!array_key_exists('_attribs', $v)){
+				echo '_attribs DOES NOT EXIST';
+				continue;
+			}
+
 			if($k == "_attribs" and !is_numeric($k)) {
 				continue;
 			}
+			
+			if(!array_key_exists('_attribs', $v)){
+				//echo '_attribs DOES NOT EXIST';
+				continue;
+			}
+
+			echo '_attribs EXIST';
+
 			if(is_numeric($k)) {
 				$xw = $this->parseArray($v,$xw);
 			} else if(is_array($v)) {
@@ -201,7 +226,7 @@ class cargonizer {
 		if($sxml->getName() == "errors") {
 			if($debug == 1) echo "SXML<br><pre>".print_r($sxml,1)."</pre>";
 			$this->error_flag = 1;
-			$this->errors['parsing'] .= $sxml."\n".print_r($this->data,1);
+			if(array_key_exists('parsing', $this->errors)) $this->errors['parsing'] .= $sxml."\n".print_r($this->data,1);
 		} else {
 			if($debug == 1) echo "SXML<br><pre>".print_r($sxml,1)."</pre>";
 		}
@@ -216,115 +241,66 @@ class cargonizer {
 			$this->cost_estimate = (string)$consignment->{'cost-estimate'}->gross;
 		}
 	}
-}
-/*
- * Modified version of Xmlwriter
- * ServiceLogistikk AS
- * 
- * Modified from
- * Simon Willison, 16th April 2003
- * Based on Lars Marius Garshol's Python XMLWriter class
- * See http://www.xml.com/pub/a/2003/04/09/py-xml.html
- * 
- */
-class CRG_Xmlwriter {
-    private $xml;
-    private $indent;
-    private $stack = array();
-    function CRG_Xmlwriter($indent = '  ',$encoding = 'UTF-8') {
-        $this->indent = $indent;
-        $this->xml = "<?xml version=\"1.0\" encoding=\"$encoding\"?>"."\n";
-    }
-    function _indent() {
-        for ($i = 0, $j = count($this->stack); $i < $j; $i++) {
-            $this->xml .= $this->indent;
-        }
-    }
-    //* Push
-    function push($element, $attributes = array(), $ns = "") {
-        $this->_indent();
-        $this->xml .= '<'.$element;
-        if($ns != '') $this->xml .= " ".$ns; 
-        foreach ($attributes as $key => $value) {
-            $this->xml .= ' '.$key.'="'.$value.'"';
-        }
-        $this->xml .= ">\n";
-        $this->stack[] = $element;
-    }
-    function push_cdata($element, $attributes = array()) {
-        $this->_indent();
-        $this->xml .= '<'.$element;
-        foreach ($attributes as $key => $value) {
-            $this->xml .= ' '.$key.'="<![CDATA['.$value.']]>"';
-        }
-        $this->xml .= ">\n";
-        $this->stack[] = $element;
-    }
-    function push_htmlentities($element, $attributes = array()) {
-        $this->_indent();
-        $this->xml .= '<'.$element;
-        foreach ($attributes as $key => $value) {
-            $this->xml .= ' '.$key.'="'.htmlentities($value).'"';
-        }
-        $this->xml .= ">\n";
-        $this->stack[] = $element;
-    }
-    //* Element
-    function element($element, $content = '', $attributes = array(), $ns = '', $nil = '') {
-        $this->_indent();
-        $this->xml .= '<'.$element;
-        foreach ($attributes as $key => $value) {
-            $this->xml .= ' '.$key.'="'.$value.'"';
-        }
-        if($content == '') {
-        	if($nil != '') $this->xml .= " ".$nil;
-        	if($ns != '') $this->xml .= " ".$ns;
-        	$this->xml .= " />\n";
-        } else {
-        	if($ns != '') $this->xml .= " ".$ns;
-        	$this->xml .= '>'.$content.'</'.$element.'>'."\n";
-        }
-    }
-    function element_cdata($element, $content = '', $attributes = array(), $length = 0) {
-    	
-    	if($length > 0) {
-	    	$c_len = strlen("![CDATA[]]");
-	    	if(strlen($content)+$c_len > $length) {
-	    		$real_length = $length-$c_len;
-	    		$content = substr($content,0,$real_length);
-	    	}
-    	}
-    	
-        $this->_indent();
-        $this->xml .= '<'.$element;
-        foreach ($attributes as $key => $value) {
-            $this->xml .= ' '.$key.'="<![CDATA['.$value.']]>"';
-        }
-        if($content == '') {
-        	$this->xml .= " />\n";
-        } else {
-        	$this->xml .= '><![CDATA['.$content.']]></'.$element.'>'."\n";
-        }
-    }
-    function element_htmlentities($element, $content = '', $attributes = array()) {
-        $this->_indent();
-        $this->xml .= '<'.$element;
-        foreach ($attributes as $key => $value) {
-            $this->xml .= ' '.$key.'="'.htmlentities($value).'"';
-        }
-        if($content == '') {
-        	$this->xml .= " />\n";
-        } else {
-        	$this->xml .= '>'.htmlentities($content).'</'.$element.'>'."\n";
-        }
-    } 
-    function pop() {
-        $element = array_pop($this->stack);
-        $this->_indent();
-        $this->xml .= "</$element>\n";
-    }
-    function getXml() {
-        return $this->xml;
-    }
+
+	private function toXml() {
+		$xw = xmlwriter_open_memory();
+		xmlwriter_set_indent($xw, 1);
+		$res = xmlwriter_set_indent_string($xw, ' ');
+
+		xmlwriter_start_document($xw, '1.0', 'UTF-8');
+
+		// Root element
+		xmlwriter_start_element($xw, 'consignments');
+
+		xmlwriter_start_element($xw, 'consignment');
+
+		$this->createXmlAttr($xw, "transport_agreement", "1061");
+
+		xmlwriter_start_element($xw, 'product');
+		xmlwriter_text($xw, 'tg_dpd_innland');
+		xmlwriter_end_element($xw); // product
+
+		xmlwriter_start_element($xw, 'parts');
+		
+			xmlwriter_start_element($xw, 'consignee');
+
+				xmlwriter_start_element($xw, 'name');
+				xmlwriter_text($xw, 'Bjoda Dev');
+				xmlwriter_end_element($xw); // name
+				xmlwriter_start_element($xw, 'postcode');
+				xmlwriter_text($xw, '0467');
+				xmlwriter_end_element($xw); // postcode
+				xmlwriter_start_element($xw, 'country');
+				xmlwriter_text($xw, 'NO');
+				xmlwriter_end_element($xw); // country
+
+			xmlwriter_end_element($xw); // consignee
+
+		xmlwriter_end_element($xw); // parts
+
+		xmlwriter_start_element($xw, 'items');
+
+			xmlwriter_start_element($xw, 'item');
+			$this->createXmlAttr($xw, "type", "package");
+			$this->createXmlAttr($xw, "amount", "1");
+			$this->createXmlAttr($xw, "weight", "1.7");
+			xmlwriter_end_element($xw); // item
+
+		xmlwriter_end_element($xw); // items
+
+		xmlwriter_end_element($xw); // consignment
+
+		xmlwriter_end_element($xw); // consignments
+
+		xmlwriter_end_document($xw);
+
+		return xmlwriter_output_memory($xw);
+	}
+
+	private function createXmlAttr($xw, $name, $value){
+		xmlwriter_start_attribute($xw, $name);
+		xmlwriter_text($xw, $value);
+		xmlwriter_end_attribute($xw);
+	}
 }
 ?>

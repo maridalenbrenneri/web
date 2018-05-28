@@ -1,5 +1,5 @@
 <?php
-require_once("include/cargonizer.php");
+require_once("cargonizer.php");
 /*
  * This wrapper converts array to xml
  * It transfers to Cargonizer using array keys and values as: <array_key>array_value</array_key>
@@ -11,25 +11,26 @@ require_once("include/cargonizer.php");
  * 
  */
 //Attain API key and sender ID from Logistra
-$crg_api_key = "776f7sdf6sdf55sdf";
-$crg_sender_id = "xx";
-$crg_consignment_url = "http://cargonizer.no/consignments.xml";
-$crg_transport_url = "http://cargonizer.no/transport_agreements.xml";
-$debug = 1;
-//Instantiate class
+// $crg_api_key = "776f7sdf6sdf55sdf";
+// $crg_sender_id = "xx";
+// $crg_consignment_url = "http://cargonizer.no/consignments.xml";
+// $crg_transport_url = "http://cargonizer.no/transport_agreements.xml";
+
+
+
+$debug = 0;
 $crg = new cargonizer($crg_api_key,$crg_sender_id,$crg_consignment_url);
+
 //Find your transport agreements
-echo "Transport agreements<br>\n";
-$xml = $crg->requestTransportAgreements($crg_transport_url);
-echo "<pre>".print_r($xml,1)."</pre>";
-/*
- * Uses transport agreement
- */
+// echo "Transport agreements<br>\n";
+// $xml = $crg->requestTransportAgreements($crg_transport_url);
+// echo "<pre>".print_r($xml,1)."</pre>";
+
 $crg_data['consignments'] = array(
 	"consignment" => array(
 		//_attribs will be parsed as attributes on the parent xml element eg. <consignment key='value' />
 		"_attribs" => array(
-			"transport_agreement" => "34", //From transport agreement request
+			"transport_agreement" => "1061", //From transport agreement request
 			"cost_estimate" => "true",
 		),
 		"values" => array(
@@ -44,7 +45,7 @@ $crg_data['consignments'] = array(
 		"parts" => array(
 			"consignee" => array(
 				"customer-number" => "123456789",
-				"name" => "Test Testersen",
+				"name" => "Bjoda Testersen",
 				"address1" => "Testveien 1",
 				"country" => "NO",
 				"postcode" => "0000",
@@ -90,12 +91,15 @@ $crg_data['consignments'] = array(
 		),
 	),
 );
+
+
+
 //Example for adding/changing parts of the array
 //$crg_data['consignments']['consignment']['items'][] = array("item"=>array("_attribs"=>array("amount" => "1","description" => "Pakke#1","type" => "PK","weight" => "1")));
 //$crg_data['consignments']['consignment']['items'][] = array("item"=>array("_attribs"=>array("amount" => "1","description" => "Pakke#2","type" => "PK","weight" => "1")));
 //Request a consignment
 echo "Consignment<br>\n";
-$crg->requestConsignment($crg_data,$debug,$crg_consignment_url);
+$crg->requestConsignment($crg_data['consignments'],$debug,$crg_consignment_url);
 echo "Package number: ".$crg->getPkgNumber()."<br>\n";
 //Display the entire xml response from cargonizer
 $result_xml = $crg->getResultXml();

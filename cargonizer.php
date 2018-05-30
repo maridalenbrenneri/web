@@ -14,11 +14,15 @@ class cargonizer {
 	private $errors = array();
 	private $error_flag = 0;
 	private $sxml;
-	
-	public function __construct($api_key,$sender_id,$url = "") {
+	private $transport_agreement;
+
+	public function __construct($api_key,$sender_id,$transport_agreement,$url ) {
 		if($url != '') $this->consignment_url = $url;
+
 		$this->api_key = $api_key;
 		$this->sender_id = $sender_id;
+		$this->transport_agreement = $transport_agreement;
+		
 		$this->curl = curl_init();
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url); 
 		curl_setopt($this->curl, CURLOPT_VERBOSE, 1); 
@@ -164,6 +168,7 @@ class cargonizer {
 
 	private function toXmlFromWcOrder($order) {
 		$order_senders_ref = 'Ordre #' . $order->get_order_number();
+		$order_customer_number = $order->get_customer_id();
 		$order_name = $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name();
 		$order_address1 = $order->get_shipping_address_1();
 		$order_address2 = $order->get_shipping_address_2();
@@ -195,6 +200,9 @@ class cargonizer {
 		
 			xmlwriter_start_element($xw, 'consignee');
 
+				xmlwriter_start_element($xw, 'number');
+				xmlwriter_text($xw, $order_customer_number);
+				xmlwriter_end_element($xw); // number			
 				xmlwriter_start_element($xw, 'name');
 				xmlwriter_text($xw, $order_name);
 				xmlwriter_end_element($xw); // name

@@ -1,35 +1,5 @@
 <?php
-/*
- * Wrapper for Logistra Cargonizer API
- * w\ general array to xml converter
- * + xml writer class
- *
- * Copyright (C) 2011 by ServiceLogistikk AS
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- * 
- */
-/**
- * @param string api_key
- * @param int sender_id
- * @param string url [optional]
- */
+
 class cargonizer {
 	private $consignment_url = "http://cargonizer.no/consignments.xml";
 	private $transport_agreement_url = "http://cargonizer.no/transport_agreements.xml";
@@ -98,19 +68,16 @@ class cargonizer {
 	/**
 	 * 
 	 * Creates a consignment
-	 * @param array $data
+	 * @param array $wc_order WooCommerce order
 	 * @param int $debug [0|1] [optional]
 	 */
-	public function requestConsignment($data,$debug=0) {
+	public function requestConsignment($wc_order, $debug=0) {
 		$this->pkg_number = "0";
 		$this->urls = array();
 		$this->cost_estimate = 0;
-		$this->data = $data;
+		$this->wc_order = $wc_order;
 
-		// echo "<pre>".print_r($data,1)."</pre>";
-
-		$xml = $this->toXml(); 
-		echo "<pre> ".print_r($xml,1)."</pre>";
+		$xml = $this->toXmlFromWcOrder($wc_order); 
 
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url);
 		curl_setopt($this->curl, CURLOPT_POST, 1);
@@ -130,10 +97,11 @@ class cargonizer {
 		
 		if($debug == 0) $response = $this->runRequest($debug);
 		
-		if($debug == 0) $this->parseResponse($response,$debug);
-		//echo $response;
+		if($debug == 1) $this->parseResponse($response,$debug);
+		
 		return $response;
 	}
+
 	/**
 	 * 
 	 * Fetches the transport agreements for the set API key and Sender ID
@@ -157,55 +125,7 @@ class cargonizer {
 		
 		return $response;
 	}
-	
-	/**
-	 * General array to xml parser
-	 */
-	private function parseArray($data,&$xw) {
-
-		// echo "<pre>".print_r($data,1)."</pre>";
-		echo count($data);
-		echo "----";
-
-		foreach($data as $k=>$v) {
-
-			if(!is_array($v)) {
-				continue;
-			}
-
-			if(!array_key_exists('_attribs', $v)){
-				echo '_attribs DOES NOT EXIST';
-				continue;
-			}
-
-			if($k == "_attribs" and !is_numeric($k)) {
-				continue;
-			}
-			
-			if(!array_key_exists('_attribs', $v)){
-				//echo '_attribs DOES NOT EXIST';
-				continue;
-			}
-
-			echo '_attribs EXIST';
-
-			if(is_numeric($k)) {
-				$xw = $this->parseArray($v,$xw);
-			} else if(is_array($v)) {
-				if(count($v) == 1 and count($v['_attribs']) > 0) {
-					$xw->element($k,'',$v['_attribs']);
-				} else {
-					$xw->push($k,$v['_attribs']);
-					$xw = $this->parseArray($v,$xw);
-					$xw->pop();
-				}
-			} else {
-				$xw->element($k,$v);
-			}
-		}
-		return $xw;
-	}
-	
+		
 	private function runRequest($debug=0) {
 		$response = curl_exec($this->curl); 
 		if(!curl_errno($this->curl)) { 
@@ -242,7 +162,18 @@ class cargonizer {
 		}
 	}
 
-	private function toXml() {
+	private function toXmlFromWcOrder($order) {
+		$order_senders_ref = 'Ordre #' . $order->get_order_number();
+		$order_name = $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name();
+		$order_address1 = $order->get_shipping_address_1();
+		$order_address2 = $order->get_shipping_address_2();
+		$order_postcode = $order->get_shipping_postcode();
+		$order_city = $order->get_shipping_city();
+		$order_country = $order->get_shipping_country();
+
+		$order_email = $order->get_billing_email();
+		$order_mobile = $order->get_billing_phone();
+
 		$xw = xmlwriter_open_memory();
 		xmlwriter_set_indent($xw, 1);
 		$res = xmlwriter_set_indent_string($xw, ' ');
@@ -265,14 +196,29 @@ class cargonizer {
 			xmlwriter_start_element($xw, 'consignee');
 
 				xmlwriter_start_element($xw, 'name');
-				xmlwriter_text($xw, 'Bjoda Dev');
+				xmlwriter_text($xw, $order_name);
 				xmlwriter_end_element($xw); // name
+				xmlwriter_start_element($xw, 'address1');
+				xmlwriter_text($xw, $order_address1);
+				xmlwriter_end_element($xw); // address1		
+				xmlwriter_start_element($xw, 'address2');
+				xmlwriter_text($xw, $order_address2);
+				xmlwriter_end_element($xw); // address2			
 				xmlwriter_start_element($xw, 'postcode');
-				xmlwriter_text($xw, '0467');
+				xmlwriter_text($xw, $order_postcode);
 				xmlwriter_end_element($xw); // postcode
+				xmlwriter_start_element($xw, 'city');
+				xmlwriter_text($xw, $order_city);
+				xmlwriter_end_element($xw); // city
 				xmlwriter_start_element($xw, 'country');
-				xmlwriter_text($xw, 'NO');
+				xmlwriter_text($xw, $order_country);
 				xmlwriter_end_element($xw); // country
+				xmlwriter_start_element($xw, 'email');
+				xmlwriter_text($xw, $order_email);
+				xmlwriter_end_element($xw); // email
+				xmlwriter_start_element($xw, 'mobile');
+				xmlwriter_text($xw, $order_mobile);
+				xmlwriter_end_element($xw); // mobile
 
 			xmlwriter_end_element($xw); // consignee
 
@@ -287,6 +233,16 @@ class cargonizer {
 			xmlwriter_end_element($xw); // item
 
 		xmlwriter_end_element($xw); // items
+
+		xmlwriter_start_element($xw, 'services');
+		// xmlwriter_text($xw, $order_name);
+		xmlwriter_end_element($xw); // services
+
+		xmlwriter_start_element($xw, 'references');
+			xmlwriter_start_element($xw, 'consignor');
+			xmlwriter_text($xw, $order_senders_ref);
+			xmlwriter_end_element($xw); // consignor
+		xmlwriter_end_element($xw); // references
 
 		xmlwriter_end_element($xw); // consignment
 
@@ -303,4 +259,5 @@ class cargonizer {
 		xmlwriter_end_attribute($xw);
 	}
 }
+
 ?>

@@ -1,8 +1,8 @@
 <?php
-
 class cargonizer {
 	private $consignment_url = "http://cargonizer.no/consignments.xml";
 	private $transport_agreement_url = "http://cargonizer.no/transport_agreements.xml";
+	private $service_partners_url = "http://cargonizer.no/service_partners.xml";
 	private $api_key;
 	private $sender_id;
 	private $curl; 
@@ -16,7 +16,7 @@ class cargonizer {
 	private $sxml;
 	private $transport_agreement;
 
-	public function __construct($api_key,$sender_id,$transport_agreement,$url ) {
+	public function __construct($api_key, $sender_id, $transport_agreement, $url = '') {
 		if($url != '') $this->consignment_url = $url;
 
 		$this->api_key = $api_key;
@@ -75,13 +75,34 @@ class cargonizer {
 	 * @param array $wc_order WooCommerce order
 	 * @param int $debug [0|1] [optional]
 	 */
-	public function requestConsignment($wc_order, $debug=0) {
+	public function requestConsignment($wc_order, $wc_order_weight,	 $debug=0) {
 		$this->pkg_number = "0";
 		$this->urls = array();
 		$this->cost_estimate = 0;
 		$this->wc_order = $wc_order;
 
-		$xml = $this->toXmlFromWcOrder($wc_order); 
+		$service_partner = NULL;
+		$servicePartnerResponse = $this->requestServicePartners($wc_order->get_shipping_country(), $wc_order->get_shipping_postcode());
+		
+		$sxml = simplexml_load_string($servicePartnerResponse);
+
+		if($sxml->{'service-partners'}->{'service-partner'} != NULL) {
+			$partner = $sxml->{'service-partners'}->{'service-partner'}[0];
+			$address = new mb_address(
+				$partner->{'name'},
+				$partner->{'address1'},
+				$partner->{'address2'},
+				$partner->{'postcode'},
+				$partner->{'city'},
+				$partner->{'country'}
+			);
+			$service_partner = new mb_service_partner(
+				$partner->{'number'},
+				$address
+			);
+		}
+
+		$xml = $this->toXmlFromWcOrder($wc_order, $wc_order_weight, $service_partner); 
 
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url);
 		curl_setopt($this->curl, CURLOPT_POST, 1);
@@ -130,6 +151,31 @@ class cargonizer {
 		return $response;
 	}
 		
+	 /**
+	 * 
+	 * Fetches the service partners for post code
+	 * @param string $url [optional]
+	 * @return simplexml_object
+	 */
+	public function requestServicePartners($country, $postcode, $url = "") {
+		if($url == '') $url = $this->service_partners_url;
+		
+		$url = $url . '?country=' . $country . '&postcode=' . $postcode;
+
+		curl_setopt($this->curl, CURLOPT_URL, $url);
+		curl_setopt($this->curl, CURLOPT_POST, 0);
+		$headers = array(
+			"X-Cargonizer-Key:".$this->api_key,
+			"X-Cargonizer-Sender:".$this->sender_id,
+			"Content-type:application/xml",
+			"Content-length:0",
+		);
+		curl_setopt($this->curl, CURLOPT_HTTPHEADER, $headers);
+		$response = $this->runRequest();
+		
+		return $response;
+	}
+
 	private function runRequest($debug=0) {
 		$response = curl_exec($this->curl); 
 		if(!curl_errno($this->curl)) { 
@@ -166,7 +212,7 @@ class cargonizer {
 		}
 	}
 
-	private function toXmlFromWcOrder($order) {
+	private function toXmlFromWcOrder($order, $wc_order_weight, $service_partner) {
 		$order_senders_ref = 'Ordre #' . $order->get_order_number();
 		$order_customer_number = $order->get_customer_id();
 		$order_name = $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name();
@@ -179,6 +225,8 @@ class cargonizer {
 		$order_email = $order->get_billing_email();
 		$order_mobile = $order->get_billing_phone();
 
+		$order_weight = $wc_order_weight / 1000; // cargonizer wants kilogram
+
 		$xw = xmlwriter_open_memory();
 		xmlwriter_set_indent($xw, 1);
 		$res = xmlwriter_set_indent_string($xw, ' ');
@@ -190,10 +238,10 @@ class cargonizer {
 
 		xmlwriter_start_element($xw, 'consignment');
 
-		$this->createXmlAttr($xw, "transport_agreement", "1061");
+		$this->createXmlAttr($xw, "transport_agreement", $this->transport_agreement);
 
 		xmlwriter_start_element($xw, 'product');
-		xmlwriter_text($xw, 'tg_dpd_innland');
+		xmlwriter_text($xw, 'postnord_parcel_letter_mypack');
 		xmlwriter_end_element($xw); // product
 
 		xmlwriter_start_element($xw, 'parts');
@@ -230,6 +278,32 @@ class cargonizer {
 
 			xmlwriter_end_element($xw); // consignee
 
+			if($service_partner != NULL) {
+				xmlwriter_start_element($xw, 'service_partner');
+					xmlwriter_start_element($xw, 'number');
+					xmlwriter_text($xw, $service_partner->service_partner_number);
+					xmlwriter_end_element($xw); // number
+					xmlwriter_start_element($xw, 'name');
+					xmlwriter_text($xw,  $service_partner->address->name);
+					xmlwriter_end_element($xw); // name
+					xmlwriter_start_element($xw, 'address1');
+					xmlwriter_text($xw, $service_partner->address->address1);
+					xmlwriter_end_element($xw); // address1
+					xmlwriter_start_element($xw, 'address2');
+					xmlwriter_text($xw, $service_partner->address->address2);
+					xmlwriter_end_element($xw); // address2
+					xmlwriter_start_element($xw, 'postcode');
+					xmlwriter_text($xw, $service_partner->address->postcode);
+					xmlwriter_end_element($xw); // postcode
+					xmlwriter_start_element($xw, 'city');
+					xmlwriter_text($xw, $service_partner->address->city);
+					xmlwriter_end_element($xw); // city
+					xmlwriter_start_element($xw, 'country');
+					xmlwriter_text($xw, $service_partner->address->country);
+					xmlwriter_end_element($xw); // country
+				xmlwriter_end_element($xw); // service_partner
+			}
+
 		xmlwriter_end_element($xw); // parts
 
 		xmlwriter_start_element($xw, 'items');
@@ -237,7 +311,7 @@ class cargonizer {
 			xmlwriter_start_element($xw, 'item');
 			$this->createXmlAttr($xw, "type", "package");
 			$this->createXmlAttr($xw, "amount", "1");
-			$this->createXmlAttr($xw, "weight", "1.7");
+			$this->createXmlAttr($xw, "weight", '' . $order_weight);
 			xmlwriter_end_element($xw); // item
 
 		xmlwriter_end_element($xw); // items
@@ -252,6 +326,24 @@ class cargonizer {
 			xmlwriter_end_element($xw); // consignor
 		xmlwriter_end_element($xw); // references
 
+		xmlwriter_start_element($xw, 'return_address');
+			xmlwriter_start_element($xw, 'name');
+			xmlwriter_text($xw, 'Maridalen Brenneri AS');
+			xmlwriter_end_element($xw); // name
+			xmlwriter_start_element($xw, 'address1');
+			xmlwriter_text($xw, 'Sørbråtveien 36');
+			xmlwriter_end_element($xw); // address1
+			xmlwriter_start_element($xw, 'postcode');
+			xmlwriter_text($xw, '0891');
+			xmlwriter_end_element($xw); // postcode
+			xmlwriter_start_element($xw, 'city');
+			xmlwriter_text($xw, 'Oslo');
+			xmlwriter_end_element($xw); // city
+			xmlwriter_start_element($xw, 'country');
+			xmlwriter_text($xw, 'NO');
+			xmlwriter_end_element($xw); // country
+		xmlwriter_end_element($xw); // return_address
+		
 		xmlwriter_end_element($xw); // consignment
 
 		xmlwriter_end_element($xw); // consignments
@@ -268,4 +360,29 @@ class cargonizer {
 	}
 }
 
+class mb_address {
+	public $name;
+	public $address1;
+	public $address2;
+	public $postcode;
+	public $country;
+
+	public function __construct($name, $address1, $address2, $postcode, $country) {
+		$this->name = $name;
+		$this->address1 = $address1;
+		$this->address2 = $address2;
+		$this->postcode = $postcode;
+		$this->country = $country;
+	}
+}
+
+class mb_service_partner {
+	public $service_partner_number;
+	public $address;
+
+	public function __construct($service_partner_number, $address) {
+		$this->service_partner_number = $service_partner_number;
+		$this->address = $address;
+	}
+}
 ?>

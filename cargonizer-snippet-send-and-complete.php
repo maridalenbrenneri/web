@@ -1,49 +1,85 @@
-add_action( 'woocommerce_order_actions', 'add_order_meta_box_actions');
+add_filter( 'woocommerce_order_actions', 'add_order_meta_box_actions');
 function add_order_meta_box_actions( $actions ) {
-	$actions['create_cargonizer_consignment'] = __( 'Send and complete', 'my-textdomain' );
-	$actions['create_cargonizer_consignment_test'] = __( 'Send and complete [TEST]', 'my-textdomain' );
+	$actions['send_to_cargonizer'] = __( '-= POSTNORD + Complete =-', 'my-textdomain' );
+    $actions['send_to_cargonizer_bring'] = __( '-= BRING + Complete =-', 'my-textdomain' );
 	return $actions;
 }
 
-add_action( 'woocommerce_order_action_create_cargonizer_consignment', 'process_create_cargonizer_consignment_action' );
-function process_create_cargonizer_consignment_action( $order ) {
-	cargonizer_request_consignment($order);
-    // $order->update_status('completed');
+add_action( 'woocommerce_order_action_send_to_cargonizer', 'process_send_to_cargonizer_action' );
+function process_send_to_cargonizer_action( $order ) {
+    // cancel request for orders that shouldn't be shipped via Cargonizer
+	foreach($order->get_used_coupons() as $item_id => $item_data) {
+	  if($item_data === 'nullfrakt2018') {
+		$order->add_order_note( 'This order should not be sent to cargonizer, cancelled request.');
+		return;
+	  }
+	}
+  
+	cargonizer_request_consignment($order, "postnord");
+    $order->update_status('completed');
 }
 
-add_action( 'woocommerce_order_action_create_cargonizer_consignment_test', 'process_create_cargonizer_consignment_test_action' );
-function process_create_cargonizer_consignment_test_action( $order ) {
-	cargonizer_request_consignment($order, 1);
+add_action( 'woocommerce_order_action_send_to_cargonizer_bring', 'process_send_to_cargonizer_bring_action' );
+function process_send_to_cargonizer_bring_action( $order ) {
+    // cancel request for orders that shouldn't be shipped via Cargonizer
+	foreach($order->get_used_coupons() as $item_id => $item_data) {
+	  if($item_data === 'nullfrakt2018') {
+		$order->add_order_note( 'This order should not be sent to cargonizer, cancelled request.');
+		return;
+	  }
+	}
+  
+	cargonizer_request_consignment($order, 'bring');
+    $order->update_status('completed');
 }
 
-add_action( 'woocommerce_order_status_completed', 'mb_handle_order_status_completed' );
-function mb_handle_order_status_completed( $order_id ) { 
-    $order = new WC_Order( $order_id );
-    cargonizer_request_consignment($order, 1);
+add_filter( "bulk_actions-edit-shop_order", "mb_add_send_to_cargonizer_bulk_action");
+function mb_add_send_to_cargonizer_bulk_action ($actions) {
+  	// Comment out for now, since it does not work.. 13/1 BA
+    // $actions['send_to_cargonizer'] = __( '-= Send to Cargonizer and change status to completed =-', 'my-textdomain' );
+    return $actions;
 }
+
+add_action( "admin_init", function() {
+	
+}, 0 );
 
 /**
 * Call cargonizer service
 */
-function cargonizer_request_consignment( $order, $useSandbox = 0 ) {
+function cargonizer_request_consignment( $order, $provider, $useSandbox = 1 ) {
   	$order_emballage_weight = 150;
 	$crg_api_key = "";
 	$crg_sender_id = "";
-	$crg_consignment_url = "http://cargonizer.no/consignments.xml";
+	$crg_consignment_url = "https://cargonizer.no/consignments.xml";
 	$crg_transport_url = "http://cargonizer.no/transport_agreements.xml";
-	$crg_transport_agreement = "9389";
-	
+	$crg_transport_agreement = "";
+  	$crg_product = "postnord_parcel_letter_mypack";
+  
+  	if($provider == 'bring'){
+	  $crg_product = 'bring_pa_doren';
+	  $crg_transport_agreement = '';
+	  
+	} else {
+	  $crg_product = 'postnord_parcel_letter_mypack';
+	  $crg_transport_agreement = '';
+	}  
+  
 	if($useSandbox == 1) {
 		$crg_api_key = "";
 		$crg_sender_id = "";
-		$crg_consignment_url = "http://sandbox.cargonizer.no/consignments.xml";
+		$crg_consignment_url = "https://sandbox.cargonizer.no/consignments.xml";
 		$crg_transport_url = "http://sandbox.cargonizer.no/transport_agreements.xml";
-		$crg_transport_agreement = "1061";
+	   	
+	  	if($provider == 'bring'){
+		  $crg_transport_agreement = '';
+		  
+		} else {
+		  $crg_transport_agreement = '';
+		}
 	}
-	
-	$debug = 0;
-	
-	$wc_order = new WC_Order($order->ID);
+
+	$wc_order = new WC_Order($order->get_id());
 	$total_weight = 0;
 
 	foreach( $order->get_items() as $item_id => $product_item ){
@@ -57,20 +93,18 @@ function cargonizer_request_consignment( $order, $useSandbox = 0 ) {
 	if($total_weight > 0) {
 	  $total_weight += $order_emballage_weight;
 	}
-  
-	$crg = new cargonizer($crg_api_key, $crg_sender_id, $crg_transport_agreement, $crg_consignment_url);
-	$response = $crg->requestConsignment($wc_order, $total_weight, $debug);
-	
-	// TODO: check response for errors and 40x, 50x => Add error note on product (and log etc.)
-	
+    
+	$crg = new cargonizer($crg_api_key, $crg_sender_id, $crg_transport_agreement, $crg_product, $crg_consignment_url);
+	$crg->requestConsignment($wc_order, $total_weight);
+	  
     // Add the sent flag
-    update_post_meta( $order->id, '_wc_order_sent_to_cargonizer', true );
+    update_post_meta( $order->get_id(), '_wc_order_sent_to_cargonizer', true );
   
 	// Add a note to order saying its been sent
 	if($useSandbox == 1) {
-		$message = '[TEST] Order sent to Cargonizer Sandbox';
+		$message = '[TEST] Order sent to Cargonizer Sandbox. ' . $crg_consignment_url . ' ' . $crg_transport_agreement . ' ' . $crg_product;
 	}  else {
 		$message = sprintf( __( 'Order sent to Cargonizer by %s', 'my-textdomain' ), wp_get_current_user()->display_name);
 	}
-    $order->add_order_note( $message );
+    $order->add_order_note( $message);
 }

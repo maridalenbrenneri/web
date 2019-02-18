@@ -1,4 +1,5 @@
 <?php
+
 class cargonizer {
 	private $consignment_url = "http://cargonizer.no/consignments.xml";
 	private $transport_agreement_url = "http://cargonizer.no/transport_agreements.xml";
@@ -15,13 +16,15 @@ class cargonizer {
 	private $error_flag = 0;
 	private $sxml;
 	private $transport_agreement;
+  private $crg_product;
 
-	public function __construct($api_key, $sender_id, $transport_agreement, $url = '') {
+	public function __construct($api_key, $sender_id, $transport_agreement, $product, $url = '') {
 		if($url != '') $this->consignment_url = $url;
-
+	  
 		$this->api_key = $api_key;
 		$this->sender_id = $sender_id;
 		$this->transport_agreement = $transport_agreement;
+	  $this->crg_product = $product;
 		
 		$this->curl = curl_init();
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url); 
@@ -75,16 +78,19 @@ class cargonizer {
 	 * @param array $wc_order WooCommerce order
 	 * @param int $debug [0|1] [optional]
 	 */
-	public function requestConsignment($wc_order, $wc_order_weight,	 $debug=0) {
+	public function requestConsignment($wc_order, $wc_order_weight) {
+	  
 		$this->pkg_number = "0";
 		$this->urls = array();
 		$this->cost_estimate = 0;
 		$this->wc_order = $wc_order;
 
 		$service_partner = NULL;
-		$servicePartnerResponse = $this->requestServicePartners($wc_order->get_shipping_country(), $wc_order->get_shipping_postcode());
+		$servicePartnerResponse = $this->requestServicePartners('NO', $wc_order->get_shipping_postcode());
 		
 		$sxml = simplexml_load_string($servicePartnerResponse);
+	  
+	//	echo "<pre>".print_r($sxml->{'service-partners'}->{'service-partner'},1)."</pre>";
 
 		if($sxml->{'service-partners'}->{'service-partner'} != NULL) {
 			$partner = $sxml->{'service-partners'}->{'service-partner'}[0];
@@ -108,7 +114,7 @@ class cargonizer {
 		curl_setopt($this->curl, CURLOPT_POST, 1);
 		curl_setopt($this->curl, CURLOPT_CUSTOMREQUEST, "POST");
 		
-		if($debug == 0) echo "XML<br>\n".print_r($xml,1)."<br>\n";
+		// echo "XML<br>\n".print_r($xml,1)."<br>\n";
 		
 		curl_setopt($this->curl, CURLOPT_POSTFIELDS, $xml);
 		$headers = array(
@@ -116,14 +122,12 @@ class cargonizer {
 			"X-Cargonizer-Sender:".$this->sender_id,
 			"Content-type:application/xml",
 			"Content-length:".strlen($xml),
-		);
-		if($debug == 1) echo "Header\n".print_r($headers,1)."<br>\n";	
+		);	
+	  
 		curl_setopt($this->curl, CURLOPT_HTTPHEADER, $headers); 
 		
-		if($debug == 0) $response = $this->runRequest($debug);
-		
-		if($debug == 1) $this->parseResponse($response,$debug);
-		
+		$response = $this->runRequest(0);
+				
 		return $response;
 	}
 
@@ -146,7 +150,7 @@ class cargonizer {
 			"Content-length:0",
 		);
 		curl_setopt($this->curl, CURLOPT_HTTPHEADER, $headers);
-		$response = $this->runRequest($debug);
+		$response = $this->runRequest(0);
 		
 		return $response;
 	}
@@ -213,7 +217,34 @@ class cargonizer {
 	}
 
 	private function toXmlFromWcOrder($order, $wc_order_weight, $service_partner) {
-		$order_senders_ref = 'Ordre #' . $order->get_order_number();
+			$order_senders_ref = '#' . $order->get_order_number() . ' ';
+	  
+	  	// Adding product names in short format for ref on printed labels
+	  	foreach ($order->get_items() as $item_id => $item_data) {
+		  $product = $item_data->get_product();
+		  $product_name = $product->get_name(); 
+		  $item_quantity = $item_data->get_quantity();
+
+		  if (strpos($product_name, 'Kaffeabonnement') !== false) {
+			$name = str_ireplace('Kaffeabonnement - ', 'ABO', $product_name);
+			$name2 = str_ireplace(', Månedlig', '', $name);
+			$shortName = str_ireplace(', Annenhver uke', '', $name2);
+			$order_senders_ref = $order_senders_ref . ' ' . $shortName . ' ';
+
+		  } else {
+
+			$pos1 = strpos($product_name, '(');
+			$pos2 = strpos($product_name, ')');
+			if($pos1 === false || $pos2 === false) {
+			  $order_senders_ref = $order_senders_ref + $item_quantity . $product_name . ' ';
+
+			} else {
+			  $shortName = substr($product_name, $pos1 + 1, $pos2 - $pos1 - 1);
+			  $order_senders_ref = $order_senders_ref . $item_quantity . $shortName . ' ';
+			}
+		  }
+		}
+	  
 		$order_customer_number = $order->get_customer_id();
 		$order_name = $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name();
 		$order_address1 = $order->get_shipping_address_1();
@@ -241,7 +272,7 @@ class cargonizer {
 		$this->createXmlAttr($xw, "transport_agreement", $this->transport_agreement);
 
 		xmlwriter_start_element($xw, 'product');
-		xmlwriter_text($xw, 'postnord_parcel_letter_mypack');
+	    xmlwriter_text($xw, $this->crg_product);
 		xmlwriter_end_element($xw); // product
 
 		xmlwriter_start_element($xw, 'parts');
@@ -365,13 +396,15 @@ class mb_address {
 	public $address1;
 	public $address2;
 	public $postcode;
+  public $city;
 	public $country;
 
-	public function __construct($name, $address1, $address2, $postcode, $country) {
+	public function __construct($name, $address1, $address2, $postcode, $city, $country) {
 		$this->name = $name;
 		$this->address1 = $address1;
 		$this->address2 = $address2;
 		$this->postcode = $postcode;
+	  $this->city = $city;
 		$this->country = $country;
 	}
 }
@@ -385,4 +418,5 @@ class mb_service_partner {
 		$this->address = $address;
 	}
 }
+
 ?>

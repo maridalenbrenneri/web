@@ -1,9 +1,9 @@
 <?php
-
 class cargonizer {
 	private $consignment_url = "http://cargonizer.no/consignments.xml";
 	private $transport_agreement_url = "http://cargonizer.no/transport_agreements.xml";
 	private $service_partners_url = "http://cargonizer.no/service_partners.xml";
+	private $print_label_url = "https://cargonizer.no/consignments/label_direct";
 	private $api_key;
 	private $sender_id;
 	private $curl; 
@@ -16,7 +16,7 @@ class cargonizer {
 	private $error_flag = 0;
 	private $sxml;
 	private $transport_agreement;
-  private $crg_product;
+    private $crg_product;
 
 	public function __construct($api_key, $sender_id, $transport_agreement, $product, $url = '') {
 		if($url != '') $this->consignment_url = $url;
@@ -24,7 +24,7 @@ class cargonizer {
 		$this->api_key = $api_key;
 		$this->sender_id = $sender_id;
 		$this->transport_agreement = $transport_agreement;
-	  $this->crg_product = $product;
+	  	$this->crg_product = $product;
 		
 		$this->curl = curl_init();
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url); 
@@ -78,7 +78,7 @@ class cargonizer {
 	 * @param array $wc_order WooCommerce order
 	 * @param int $debug [0|1] [optional]
 	 */
-	public function requestConsignment($wc_order, $wc_order_weight) {
+	public function requestConsignment($wc_order, $wc_order_weight, $useRfidPrinter = 0) {
 	  
 		$this->pkg_number = "0";
 		$this->urls = array();
@@ -127,6 +127,14 @@ class cargonizer {
 		curl_setopt($this->curl, CURLOPT_HTTPHEADER, $headers); 
 		
 		$response = $this->runRequest(0);
+
+		$sxml = simplexml_load_string($response);
+		$id = 0;
+		foreach($sxml->consignment as $consignment) {
+			$id = $consignment->{'id'};
+		}
+
+		$this->printLabel(false, $id, $useRfidPrinter);
 				
 		return $response;
 	}
@@ -155,6 +163,32 @@ class cargonizer {
 		return $response;
 	}
 		
+	/**
+	 * Print label
+	 */
+	public function printLabel($useRfidPrinter, $consignmentId, $url = "") {
+		$printer_normal_id = 1057;
+		$printer_rfid_id = 1698;
+
+		if($useRfidPrinter == 1)	$printer = $printer_rfid_id;
+		else $printer = $printer_normal_id;
+
+		if($url == '') $url = $this->print_label_url;
+
+		$url = $url . "?printer_id=" . $printer . "&consignment_ids[]=" . $consignmentId;
+
+		curl_setopt($this->curl, CURLOPT_URL, $url);
+		curl_setopt($this->curl, CURLOPT_POST, 0);
+		$headers = array(
+			"X-Cargonizer-Key:".$this->api_key,
+			"X-Cargonizer-Sender:".$this->sender_id,
+		);
+		curl_setopt($this->curl, CURLOPT_HTTPHEADER, $headers);
+		$response = $this->runRequest(0);
+		
+		return $response;
+	}
+
 	 /**
 	 * 
 	 * Fetches the service partners for post code
@@ -217,7 +251,7 @@ class cargonizer {
 	}
 
 	private function toXmlFromWcOrder($order, $wc_order_weight, $service_partner) {
-			$order_senders_ref = '#' . $order->get_order_number() . ' ';
+		$order_senders_ref = '#' . $order->get_order_number() . ' ';
 	  
 	  	// Adding product names in short format for ref on printed labels
 	  	foreach ($order->get_items() as $item_id => $item_data) {
@@ -396,7 +430,7 @@ class mb_address {
 	public $address1;
 	public $address2;
 	public $postcode;
-  public $city;
+  	public $city;
 	public $country;
 
 	public function __construct($name, $address1, $address2, $postcode, $city, $country) {
@@ -404,7 +438,7 @@ class mb_address {
 		$this->address1 = $address1;
 		$this->address2 = $address2;
 		$this->postcode = $postcode;
-	  $this->city = $city;
+	  	$this->city = $city;
 		$this->country = $country;
 	}
 }

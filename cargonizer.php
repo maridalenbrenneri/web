@@ -16,7 +16,7 @@ class cargonizer {
 	private $error_flag = 0;
 	private $sxml;
 	private $transport_agreement;
-    private $crg_product;
+  private $crg_product;
 
 	public function __construct($api_key, $sender_id, $transport_agreement, $product, $url = '') {
 		if($url != '') $this->consignment_url = $url;
@@ -24,7 +24,7 @@ class cargonizer {
 		$this->api_key = $api_key;
 		$this->sender_id = $sender_id;
 		$this->transport_agreement = $transport_agreement;
-	  	$this->crg_product = $product;
+	  $this->crg_product = $product;
 		
 		$this->curl = curl_init();
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url); 
@@ -78,7 +78,7 @@ class cargonizer {
 	 * @param array $wc_order WooCommerce order
 	 * @param int $debug [0|1] [optional]
 	 */
-	public function requestConsignment($wc_order, $wc_order_weight, $useRfidPrinter = 0) {
+	public function requestConsignment($wc_order, $wc_order_weight) {
 	  
 		$this->pkg_number = "0";
 		$this->urls = array();
@@ -134,7 +134,7 @@ class cargonizer {
 			$id = $consignment->{'id'};
 		}
 
-		$this->printLabel(false, $id, $useRfidPrinter);
+		$this->printLabel($id);
 				
 		return $response;
 	}
@@ -166,12 +166,14 @@ class cargonizer {
 	/**
 	 * Print label
 	 */
-	public function printLabel($useRfidPrinter, $consignmentId, $url = "") {
+	public function printLabel($consignmentId, $url = "") {
 		$printer_normal_id = 1057;
 		$printer_rfid_id = 1698;
 
-		if($useRfidPrinter == 1)	$printer = $printer_rfid_id;
-		else $printer = $printer_normal_id;
+		$printer = $printer_normal_id;
+		if($this->crg_product == "bring_pose_pa_doren_rfid") {
+			$printer = $printer_rfid_id;
+		}
 
 		if($url == '') $url = $this->print_label_url;
 

@@ -253,32 +253,30 @@ class cargonizer {
 	}
 
 	private function toXmlFromWcOrder($order, $wc_order_weight, $service_partner) {
-		$order_senders_ref = '#' . $order->get_order_number() . ' ';
+		$order_senders_ref = '';
 	  
-	  	// Adding product names in short format for ref on printed labels
-	  	foreach ($order->get_items() as $item_id => $item_data) {
-		  $product = $item_data->get_product();
-		  $product_name = $product->get_name(); 
-		  $item_quantity = $item_data->get_quantity();
+		// Adding product names in short format for ref on printed labels
+		foreach ($order->get_items() as $item_id => $item_data) {
+			$product = $item_data->get_product();
+			$product_name = $product->get_name(); 
+			$item_quantity = $item_data->get_quantity();
 
-		  if (strpos($product_name, 'Kaffeabonnement') !== false) {
-			$name = str_ireplace('Kaffeabonnement - ', 'ABO', $product_name);
-			$name2 = str_ireplace(', Månedlig', '', $name);
-			$shortName = str_ireplace(', Annenhver uke', '', $name2);
-			$order_senders_ref = $order_senders_ref . ' ' . $shortName . ' ';
-
-		  } else {
-
-			$pos1 = strpos($product_name, '(');
-			$pos2 = strpos($product_name, ')');
-			if($pos1 === false || $pos2 === false) {
-			  $order_senders_ref = $order_senders_ref + $item_quantity . $product_name . ' ';
+			if (strpos($product_name, 'Kaffeabonnement') !== false) {
+				$name = str_ireplace('Kaffeabonnement - ', 'ABO', $product_name);
+				$name2 = str_ireplace(', Månedlig', '', $name);
+				$shortName = str_ireplace(', Annenhver uke', '', $name2);
+				$order_senders_ref = $shortName;
 
 			} else {
-			  $shortName = substr($product_name, $pos1 + 1, $pos2 - $pos1 - 1);
-			  $order_senders_ref = $order_senders_ref . $item_quantity . $shortName . ' ';
+				$pos1 = strpos($product_name, '(');
+				$pos2 = strpos($product_name, ')');
+				if($pos1 === false || $pos2 === false) {
+					$order_senders_ref = $order_senders_ref + $item_quantity . $product_name . ' ';
+				} else {
+					$shortName = substr($product_name, $pos1 + 1, $pos2 - $pos1 - 1);
+					$order_senders_ref = $order_senders_ref . $item_quantity . $shortName . ' ';
+				}
 			}
-		  }
 		}
 	  
 		$order_customer_number = $order->get_customer_id();

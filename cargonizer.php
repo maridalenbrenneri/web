@@ -16,7 +16,7 @@ class cargonizer {
 	private $error_flag = 0;
 	private $sxml;
 	private $transport_agreement;
-  private $crg_product;
+  	private $crg_product;
 
 	public function __construct($api_key, $sender_id, $transport_agreement, $product, $url = '') {
 		if($url != '') $this->consignment_url = $url;
@@ -24,7 +24,7 @@ class cargonizer {
 		$this->api_key = $api_key;
 		$this->sender_id = $sender_id;
 		$this->transport_agreement = $transport_agreement;
-	  $this->crg_product = $product;
+	  	$this->crg_product = $product;
 		
 		$this->curl = curl_init();
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url); 
@@ -304,6 +304,8 @@ class cargonizer {
 		xmlwriter_start_element($xw, 'consignment');
 
 		$this->createXmlAttr($xw, "transport_agreement", $this->transport_agreement);
+	  
+	    $this->createXmlAttr($xw, "print", "false");
 
 		xmlwriter_start_element($xw, 'product');
 	    xmlwriter_text($xw, $this->crg_product);

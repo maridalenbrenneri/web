@@ -16,7 +16,7 @@ class cargonizer {
 	private $error_flag = 0;
 	private $sxml;
 	private $transport_agreement;
-  	private $crg_product;
+  private $crg_product;
 
 	public function __construct($api_key, $sender_id, $transport_agreement, $product, $url = '') {
 		if($url != '') $this->consignment_url = $url;
@@ -24,7 +24,7 @@ class cargonizer {
 		$this->api_key = $api_key;
 		$this->sender_id = $sender_id;
 		$this->transport_agreement = $transport_agreement;
-	  	$this->crg_product = $product;
+	  $this->crg_product = $product;
 		
 		$this->curl = curl_init();
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url); 
@@ -261,11 +261,13 @@ class cargonizer {
 			$product_name = $product->get_name(); 
 			$item_quantity = $item_data->get_quantity();
 
-			if (strpos($product_name, 'Kaffeabonnement') !== false) {
+			if (strpos($product_name, 'Gaveabonnement') !== false) {
+				// ignore gabo (we never need to print those on the label)
+			} elseif (strpos($product_name, 'Kaffeabonnement') !== false) {
 				$name = str_ireplace('Kaffeabonnement - ', 'ABO', $product_name);
 				$name2 = str_ireplace(', Månedlig', '', $name);
 				$shortName = str_ireplace(', Annenhver uke', '', $name2);
-				$order_senders_ref = $shortName;
+				$order_senders_ref = $order_senders_ref . $shortName;
 
 			} else {
 				$pos1 = strpos($product_name, '(');

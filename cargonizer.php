@@ -16,15 +16,17 @@ class cargonizer {
 	private $error_flag = 0;
 	private $sxml;
 	private $transport_agreement;
-  private $crg_product;
+    private $crg_product;
+    private $crg_product_srv;
 
-	public function __construct($api_key, $sender_id, $transport_agreement, $product, $url = '') {
+	public function __construct($api_key, $sender_id, $transport_agreement, $product, $crg_product_srv, $url = '') {
 		if($url != '') $this->consignment_url = $url;
 	  
 		$this->api_key = $api_key;
 		$this->sender_id = $sender_id;
 		$this->transport_agreement = $transport_agreement;
-	  $this->crg_product = $product;
+	    $this->crg_product = $product;
+	  	$this->crg_product_srv = $crg_product_srv;
 		
 		$this->curl = curl_init();
 		curl_setopt($this->curl, CURLOPT_URL, $this->consignment_url); 
@@ -386,7 +388,11 @@ class cargonizer {
 		xmlwriter_end_element($xw); // items
 
 		xmlwriter_start_element($xw, 'services');
-		// xmlwriter_text($xw, $order_name);
+	  
+	  		xmlwriter_start_element($xw, 'service');
+			$this->createXmlAttr($xw, "id", $this->crg_product_srv);
+			xmlwriter_end_element($xw); // service
+	  
 		xmlwriter_end_element($xw); // services
 
 		xmlwriter_start_element($xw, 'references');
